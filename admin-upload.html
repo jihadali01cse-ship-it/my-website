@@ -1,0 +1,251 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Jihad Website - Image Upload</title>
+
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+
+    <style>
+        * {
+            box-sizing: border-box;
+        }
+
+        body {
+            margin: 0;
+            padding: 20px;
+            min-height: 100vh;
+            font-family: Arial, sans-serif;
+            background: linear-gradient(135deg, #172033, #00a8cc);
+        }
+
+        .container {
+            max-width: 600px;
+            margin: 40px auto;
+            padding: 25px;
+            background: white;
+            border-radius: 18px;
+            box-shadow: 0 10px 30px #0003;
+        }
+
+        h1 {
+            text-align: center;
+            color: #172033;
+        }
+
+        label {
+            display: block;
+            margin-top: 18px;
+            margin-bottom: 7px;
+            font-weight: bold;
+        }
+
+        input, select, button {
+            width: 100%;
+            padding: 12px;
+            font-size: 16px;
+            border-radius: 8px;
+        }
+
+        input, select {
+            border: 1px solid #ccd3dd;
+        }
+
+        button {
+            margin-top: 22px;
+            border: none;
+            color: white;
+            background: #172033;
+            cursor: pointer;
+        }
+
+        button:disabled {
+            opacity: 0.6;
+            cursor: wait;
+        }
+
+        #message {
+            overflow-wrap: anywhere;
+            line-height: 1.5;
+        }
+
+        .back {
+            display: block;
+            text-align: center;
+            margin-top: 20px;
+            color: #0086a3;
+        }
+    </style>
+</head>
+
+<body>
+    <main class="container">
+        <h1>📸 Image Upload</h1>
+        <p>Jihad Website Admin Panel</p>
+
+        <form id="uploadForm">
+            <label for="title">Image Title</label>
+            <input id="title" type="text" maxlength="150"
+                   placeholder="Enter image title" required>
+
+            <label for="category">Category</label>
+            <select id="category" required>
+                <option value="">Select category</option>
+                <option value="Nature">Nature</option>
+                <option value="Technology">Technology</option>
+                <option value="Education">Education</option>
+                <option value="Personal">Personal</option>
+                <option value="Other">Other</option>
+            </select>
+
+            <label for="image">Choose Image</label>
+            <input id="image" type="file"
+                   accept="image/jpeg,image/png,image/webp"
+                   required>
+
+            <button id="uploadButton" type="submit">
+                Upload Image
+            </button>
+        </form>
+
+        <p id="message" role="status" aria-live="polite"></p>
+
+        <a class="back" href="./index.html">← Back to Website</a>
+    </main>
+
+    <script>
+        const SUPABASE_URL =
+            "https://ylsvipyztljtblfuoxhd.supabase.co";
+
+        const SUPABASE_PUBLISHABLE_KEY =
+            "sb_publishable_Gj7-cAMpBFMNJithr1HIhA_ifec4CQW";
+
+        const supabaseClient = window.supabase.createClient(
+            SUPABASE_URL,
+            SUPABASE_PUBLISHABLE_KEY
+        );
+
+        const form = document.getElementById("uploadForm");
+        const message = document.getElementById("message");
+        const button = document.getElementById("uploadButton");
+
+        form.addEventListener("submit", async function (event) {
+            event.preventDefault();
+
+            button.disabled = true;
+            message.style.color = "#333";
+            message.textContent = "Checking login...";
+
+            try {
+                const { data: sessionData, error: sessionError } =
+                    await supabaseClient.auth.getSession();
+
+                if (sessionError || !sessionData.session) {
+                    message.style.color = "red";
+                    message.textContent =
+                        "Please log in through admin.html first.";
+                    return;
+                }
+
+                const title =
+                    document.getElementById("title").value.trim();
+
+                const category =
+                    document.getElementById("category").value;
+
+                const file =
+                    document.getElementById("image").files[0];
+
+                if (!title || !category || !file) {
+                    message.style.color = "red";
+                    message.textContent =
+                        "Please complete all fields.";
+                    return;
+                }
+
+                const allowedTypes = [
+                    "image/jpeg",
+                    "image/png",
+                    "image/webp"
+                ];
+
+                if (!allowedTypes.includes(file.type)) {
+                    message.style.color = "red";
+                    message.textContent =
+                        "Choose a JPG, PNG, or WebP image.";
+                    return;
+                }
+
+                if (file.size > 5 * 1024 * 1024) {
+                    message.style.color = "red";
+                    message.textContent =
+                        "Image must be smaller than 5 MB.";
+                    return;
+                }
+
+                button.textContent = "Uploading...";
+                message.textContent = "Uploading image...";
+
+                const safeName = file.name.replace(
+                    /[^a-zA-Z0-9._-]/g, "_"
+                );
+
+                const filePath =
+                    Date.now() + "-" + safeName;
+
+                const { error: storageError } =
+                    await supabaseClient.storage
+                        .from("themes-images")
+                        .upload(filePath, file, {
+                            upsert: false,
+                            contentType: file.type
+                        });
+
+                if (storageError) {
+                    throw storageError;
+                }
+
+                const { data: urlData } =
+                    supabaseClient.storage
+                        .from("themes-images")
+                        .getPublicUrl(filePath);
+
+                const imageUrl = urlData.publicUrl;
+
+                const { error: databaseError } =
+                    await supabaseClient
+                        .from("themes_images")
+                        .insert([{
+                            title: title,
+                            category: category,
+                            image_url: imageUrl
+                        }]);
+
+                if (databaseError) {
+                    message.style.color = "red";
+                    message.textContent =
+                        "Image uploaded, but database save failed: " +
+                        databaseError.message +
+                        ". Keep the image URL: " + imageUrl;
+                    return;
+                }
+
+                message.style.color = "green";
+                message.textContent =
+                    "Image uploaded and saved successfully!";
+
+                form.reset();
+
+            } catch (error) {
+                message.style.color = "red";
+                message.textContent =
+                    "Error: " + (error.message || "Upload failed.");
+            } finally {
+                button.disabled = false;
+                button.textContent = "Upload Image";
+            }
+        });
+    </script>
+</body>
+  </html>
